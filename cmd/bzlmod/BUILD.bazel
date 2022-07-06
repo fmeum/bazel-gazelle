@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "bzlmod_lib",
+    srcs = [
+        "bzlmod.go",
+    ],
+    importpath = "github.com/bazelbuild/bazel-gazelle/cmd/bzlmod",
+    visibility = ["//visibility:private"],
+    deps = ["//language/go"],
+)
+
+go_binary(
+    name = "bzlmod",
+    embed = [":bzlmod_lib"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "all_files",
+    testonly = True,
+    srcs = [
+        "BUILD.bazel",
+        "bzlmod.go",
+    ],
+    visibility = ["//visibility:public"],
+)

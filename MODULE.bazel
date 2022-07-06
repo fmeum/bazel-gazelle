@@ -13,14 +13,6 @@ go_sdk = use_extension("@io_bazel_rules_go//go:extensions.bzl", "go_sdk")
 # Known to exist since it is instantiated by rules_go itself.
 use_repo(go_sdk, "go_default_sdk")
 
-non_module_deps = use_extension("//internal/bzlmod:non_module_deps.bzl", "non_module_deps")
-use_repo(
-    non_module_deps,
-    "bazel_gazelle_go_repository_cache",
-    "bazel_gazelle_go_repository_config",
-    "bazel_gazelle_go_repository_tools",
-)
-
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.module(
     importpath = "honnef.co/go/tools",
@@ -241,4 +233,7 @@ use_repo(
     "org_golang_x_tools",
     # Used internally by the go_deps module extension.
     "_bazel_gazelle_go_repository_directives",
+    "bazel_gazelle_go_repository_cache",
+    "bazel_gazelle_go_repository_config",
+    "bazel_gazelle_go_repository_tools",
 )

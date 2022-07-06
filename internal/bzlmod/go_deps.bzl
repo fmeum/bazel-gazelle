@@ -1,4 +1,6 @@
+load("//internal:common.bzl", "executable_extension")
 load("//internal:go_repository.bzl", "go_repository")
+load(":non_module_deps.bzl", "fetch_non_module_deps")
 load(":semver.bzl", "semver")
 
 def _repo_name(importpath):
@@ -28,7 +30,21 @@ _go_repository_directives = repository_rule(
 def _noop(s):
     pass
 
+def _resolve_label(module_ctx, label_cache, label):
+    label_cache[label] = module_ctx.path(label)
+
 def _go_deps_impl(module_ctx):
+    fetch_non_module_deps()
+
+    # Resolve all labels first to prevent restarts after actual work has been
+    # done.
+    label_cache = {}
+    bzlmod_helper = Label("@bazel_gazelle_go_repository_tools//:bin/bzlmod{}".format(executable_extension(module_ctx)))
+    _resolve_label(module_ctx, label_cache, bzlmod_helper)
+    for module in module_ctx.modules:
+        for mod_from_file in module.tags.from_file:
+            _resolve_label(module_ctx, label_cache, mod_from_file.go_mod)
+
     module_resolutions = {}
     root_versions = {}
 
@@ -47,6 +63,25 @@ def _go_deps_impl(module_ctx):
             elif check_direct_deps == "error":
                 outdated_direct_dep_printer = fail
 
+        additional_go_modules = []
+        for mod_from_file in module.tags.from_file:
+            result = module_ctx.execute(
+                arguments = [
+                    label_cache[bzlmod_helper],
+                    "-go_mod=%s" % label_cache[mod_from_file.go_mod],
+                ],
+            )
+            if result != 0:
+                fail("Failed to parse %s: %s" % (mod_from_file.go_mod, result.stderr))
+            additional_go_modules += [
+                struct(
+                    importpath = go_mod_dict.get("importpath"),
+                    version = go_mod_dict.get("version"),
+                    sum = go_mod_dict.get("sum"),
+                )
+                for go_mod_dict in json.decode(result.stdout)
+            ]
+
         # Parse the go_dep.module tags of all transitive dependencies and apply
         # Minimum Version Selection to resolve importpaths to Go module versions
         # and sums.
@@ -59,7 +94,7 @@ def _go_deps_impl(module_ctx):
         # transitive dependencies have also been declared - we may end up
         # resolving them to higher versions, but only compatible ones.
         importpaths = {}
-        for module_tag in module.tags.module:
+        for module_tag in module.tags.module + additional_go_modules:
             if module_tag.importpath in importpaths:
                 fail("Duplicate importpath '%s' in module '%s'" % (module_tag.importpath, module.name))
             importpaths[module_tag.importpath] = None
@@ -126,6 +161,12 @@ _config_tag = tag_class(
     },
 )
 
+_from_file_tag = tag_class(
+    attrs = {
+        "go_mod": attr.label(mandatory = True),
+    },
+)
+
 _module_tag = tag_class(
     attrs = {
         "importpath": attr.string(mandatory = True),
@@ -139,6 +180,7 @@ go_deps = module_extension(
     _go_deps_impl,
     tag_classes = {
         "config": _config_tag,
+        "from_file": _from_file_tag,
         "module": _module_tag,
     },
 )

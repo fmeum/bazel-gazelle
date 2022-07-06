@@ -20,6 +20,11 @@ _GO_REPOSITORY_TOOLS_BUILD_FILE = """
 package(default_visibility = ["//visibility:public"])
 
 filegroup(
+    name = "bzlmod",
+    srcs = ["bin/bzlmod{extension}"],
+)
+
+filegroup(
     name = "fetch_repo",
     srcs = ["bin/fetch_repo{extension}"],
 )
@@ -94,6 +99,7 @@ def _go_repository_tools_impl(ctx):
         "all=-trimpath=" + env["GOPATH"],
         "-asmflags",
         "all=-trimpath=" + env["GOPATH"],
+        "github.com/bazelbuild/bazel-gazelle/cmd/bzlmod",
         "github.com/bazelbuild/bazel-gazelle/cmd/gazelle",
         "github.com/bazelbuild/bazel-gazelle/cmd/fetch_repo",
         "github.com/bazelbuild/bazel-gazelle/cmd/generate_repo_config",

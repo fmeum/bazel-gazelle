@@ -26,8 +26,12 @@ import (
 )
 
 func importReposFromModules(args language.ImportReposArgs) language.ImportReposResult {
+	return importReposFromGoMod(args.Path)
+}
+
+func importReposFromGoMod(goModPath string) language.ImportReposResult {
 	// run go list in the dir where go.mod is located
-	data, err := goListModules(filepath.Dir(args.Path))
+	data, err := goListModules(filepath.Dir(goModPath))
 	if err != nil {
 		return language.ImportReposResult{Error: processGoListError(err, data)}
 	}
@@ -38,7 +42,7 @@ func importReposFromModules(args language.ImportReposArgs) language.ImportReposR
 	}
 
 	// Load sums from go.sum. Ideally, they're all there.
-	goSumPath := filepath.Join(filepath.Dir(args.Path), "go.sum")
+	goSumPath := filepath.Join(filepath.Dir(goModPath), "go.sum")
 	data, _ = ioutil.ReadFile(goSumPath)
 	lines := bytes.Split(data, []byte("\n"))
 	for _, line := range lines {
