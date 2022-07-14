@@ -26,6 +26,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/bazelbuild/bazel-gazelle/pathtools"
 )
@@ -218,50 +219,79 @@ func ImportPathToBazelRepoName(importpath string) string {
 }
 
 // ModulePathToBazelRepoNameOneToOne maps a Go module path to a Bazel repository
-// name in a reversible manner.
+// name in a reversible manner. The resulting repository name is also a valid
+// Bazel module name.
+// '/' is mapped to '_' and '.' as well as '-' are preserved, so that typical Go
+// module paths transform as follows:
+//
+// gopkg.in/yaml.v3         --> gopkg.in_yaml.v3
+// github.com/goccy/go-yaml --> github.com_goccy_go-yaml
+//
 // Note: Module paths are sometimes also referred to as import paths even though
 // most modules' top-level directories are not valid Go packages.
 func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
-	// Bazel repository names can contain A-Z, a-z, 0-9, '_', '-', and '.'.
+	// Bazel repository names can contain A-Z, a-z, 0-9, '_', '-', and '.', but
+	// using uppercase characters is discouraged and may not work on Windows.
+	// Bazel module names are restricted further in that they can only start
+	// with a letter.
 	// Go module paths can contain A-Z, a-z, 0-9, '_', '-', '.', '/', and '~'.
 	// See:
 	// https://cs.opensource.google/bazel/bazel/+/c7792e2376c735f3cb3594bfcd69f6d84f8205b7:src/main/java/com/google/devtools/build/lib/cmdline/RepositoryName.java;l=40
 	// https://go.dev/ref/mod#go-mod-file-ident
 	//
-	// We thus choose the following escaping scheme:
-	// 1. "_" is mapped to "__"
-	// 2. "~" is mapped to "_."
-	// 3. "/" is mapped to "_"
+	// We thus choose the following escaping scheme, optimizing for the common
+	// characters '/' and '-' at the cost of making the escape sequences for
+	// relatively uncommon characters ('_' and 'A' to 'Z') and extremely
+	// uncommon characters ('~', leading digit or escaped character) longer:
 	//
-	// This mapping is reversible because of the following two requirements for
-	// valid Go module paths:
+	// 1. Before applying the other mappings, if the import path starts with any
+	//    character C that requires escaping or is a digit, replace it with
+	//    "a~C.a".
+	// 2. '_' is mapped to "._."
+	// 3. '~' is mapped to "._-"
+	// 4. 'A' to 'Z' is mapped to "._a" to "._z"
+	// 5. '/' is mapped to '_'
 	//
-	// "Each path element is a non-empty string..."
-	// This means that a valid Go module path will never contain the substring
-	// "//", thus "___" in a Bazel repository name unambiguously corresponds to
-	// "_".
-	//s
+	// This mapping is reversible because of the following two restrictions on a
+	// valid Go module path:
+	//
 	// "A path element may not begin or end with a dot."
-	// This means that a valid Go module path will never contain the substring
-	// "/.", thus "_._" in a Bazel repository name unambiguously corresponds to
-	// "~".
 	//
-	// Fortunately, "_" and especially "~" are rather uncommon in module paths.
+	// This means that a valid Go module path will never contain the substring
+	// "./", thus "._" in a Bazel repository name unambiguously corresponds to
+	// an escape character: "./" can't be contained in the input in the first
+	// place and any "._" in the input would have been escaped as ".._.".
+	//
+	// "The element prefix up to the first dot must not end with a tilde
+	//  followed by one or more digits."
+	//
+	// This means that a valid Go module path will never start with the prefix
+	// "a~N.a", where N is any digit.
+
+	// Module paths are always non-empty.
+	first := rune(modulePath[0])
+	if unicode.IsDigit(first) || unicode.IsUpper(first) || first == '_' || first == '~' {
+		modulePath = fmt.Sprintf("a~%c.a%s", first, modulePath[1:])
+	}
 	var repoName strings.Builder
 	for _, r := range modulePath {
-		switch r {
-		case '_':
-			repoName.WriteString("_._")
-		case '~':
-			repoName.WriteString("_.-")
-		case '/':
+		switch {
+		case r == '_':
+			repoName.WriteString("._.")
+		case r == '~':
+			repoName.WriteString("._-")
+		case r == '/':
 			repoName.WriteString("_")
+		case r >= 'A' && r <= 'Z':
+			repoName.WriteString("._" + strings.ToLower(string(r)))
 		default:
 			repoName.WriteRune(r)
 		}
 	}
 	return repoName.String()
 }
+
+var escapedLeadingCharacterPattern = regexp.MustCompile(`^a~(.)\.a`)
 
 // BazelRepoNameToModulePathOneToOne maps a Bazel repository name obtained from
 // ModulePathToBazelRepoNameOneToOne back to a Go module path.
@@ -271,28 +301,31 @@ func BazelRepoNameToModulePathOneToOne(repoName string) (string, error) {
 	pos := 0
 	for pos < len(repoName) {
 		c := repoName[pos]
-		if c != '_' {
-			modulePath.WriteRune(rune(c))
-			pos++
-			continue
-		}
-		if pos+1 == len(repoName) || repoName[pos+1] != '.' {
+		if c == '_' {
 			modulePath.WriteRune('/')
 			pos++
 			continue
 		}
-		if pos+2 == len(repoName) {
-			return "", errors.New("invalid escape sequence '_.' at end of string")
+		if c != '.' || pos+1 == len(repoName) || repoName[pos+1] != '_' {
+			modulePath.WriteRune(rune(c))
+			pos++
+			continue
 		}
-		switch repoName[pos+2] {
-		case '_':
+		if pos+2 == len(repoName) {
+			return "", errors.New("invalid escape sequence '._' at end of string")
+		}
+		c = repoName[pos+2]
+		switch {
+		case c == '.':
 			modulePath.WriteRune('_')
-		case '-':
+		case c == '-':
 			modulePath.WriteRune('~')
+		case c >= 'a' && c <= 'z':
+			modulePath.WriteString(strings.ToUpper(string(c)))
 		default:
-			modulePath.WriteRune(rune(repoName[pos+2]))
+			return "", fmt.Errorf("invalid escape sequence '._%c' at end of string", c)
 		}
 		pos += 3
 	}
-	return modulePath.String(), nil
+	return escapedLeadingCharacterPattern.ReplaceAllString(modulePath.String(), "$1"), nil
 }

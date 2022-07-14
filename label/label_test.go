@@ -18,6 +18,7 @@ package label
 import (
 	"golang.org/x/mod/module"
 	"reflect"
+	"regexp"
 	"testing"
 )
 
@@ -110,20 +111,28 @@ func TestImportPathToBazelRepoName(t *testing.T) {
 	}
 }
 
+var bazelRepoNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]*$`)
+
 func TestModulePathToBazelRepoNameAndBack(t *testing.T) {
 	for _, modulePath := range []string{
 		"gopkg.in/yaml.v3",
 		"golang.org/x/mod",
 		"git.sr.ht/~urandom/errors",
-		"example.org/foo/foo_bar",
-		"example.org/~/~_/_/_~/__/_._/_._._._/foobar",
+		"1example.org/foo/foo_bar",
+		"Aexample.org/foo/foo_bar",
+		"_example.org/foo/foo_bar",
+		"~example.org/foo/foo_bar",
+		"example.org/~/~_/_/_~/__/_._/_.__._.__/foobar",
+		"example.org/~/~_A/A_/_B~/_C_/_.C_/_._C_._C._C_/foobar",
 	} {
 		err := module.CheckImportPath(modulePath)
 		if err != nil {
 			t.Errorf("Invalid import path %q: %v", modulePath, err)
 		}
 		repoName := ModulePathToBazelRepoNameOneToOne(modulePath)
-		println(repoName)
+		if !bazelRepoNamePattern.MatchString(repoName) {
+			t.Errorf("ModulePathToBazelRepoNameOneToOne(%q) = %q is not a valid repo name", modulePath, repoName)
+		}
 		if got, err := BazelRepoNameToModulePathOneToOne(repoName); got != modulePath || err != nil {
 			t.Errorf(
 				"ModulePathToBazelRepoNameOneToOne(%q) = %q\nBazelRepoNameToModulePathOneToOne(ModulePathToBazelRepoNameOneToOne(%q)) = %q; want %q",
@@ -138,5 +147,30 @@ func TestModulePathToBazelRepoNameAndBack(t *testing.T) {
 }
 
 func FuzzModulePathToBazelRepoNameAndBack(f *testing.F) {
-	f.Add("gopkg.in/yaml.v3", "golang.org/x/mod", "git.sr.ht/~urandom/errors", "example.org/~/~_/_/_~/__/_._/_._._._/foobar")
+	f.Add("gopkg.in/yaml.v3")
+	f.Add("golang.org/x/mod")
+	f.Add("git.sr.ht/~urandom/errors")
+	f.Add("1example.org/foo/foo_bar")
+	f.Add("example.org/~/~_/_/_~/__/_._/_._._._/foobar")
+	f.Add("example.org/~/~_A/A_/_B~/_C_/_.C_/_._C_._C._C_/foobar")
+	f.Fuzz(func(t *testing.T, modulePath string) {
+		err := module.CheckImportPath(modulePath)
+		if err != nil {
+			return
+		}
+		repoName := ModulePathToBazelRepoNameOneToOne(modulePath)
+		if !bazelRepoNamePattern.MatchString(repoName) {
+			t.Errorf("ModulePathToBazelRepoNameOneToOne(%q) = %q is not a valid repo name", modulePath, repoName)
+		}
+		if got, err := BazelRepoNameToModulePathOneToOne(repoName); got != modulePath || err != nil {
+			t.Errorf(
+				"ModulePathToBazelRepoNameOneToOne(%q) = %q\nBazelRepoNameToModulePathOneToOne(ModulePathToBazelRepoNameOneToOne(%q)) = %q; want %q",
+				modulePath,
+				repoName,
+				modulePath,
+				got,
+				modulePath,
+			)
+		}
+	})
 }
