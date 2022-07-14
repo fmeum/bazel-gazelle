@@ -233,7 +233,7 @@ func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
 	// Bazel repository names can contain A-Z, a-z, 0-9, '_', '-', and '.', but
 	// using uppercase characters is discouraged and may not work on Windows.
 	// Bazel module names are restricted further in that they can only start
-	// with a letter.
+	// with a letter and can only end with a letter or digit.
 	// Go module paths can contain A-Z, a-z, 0-9, '_', '-', '.', '/', and '~'.
 	// See:
 	// https://cs.opensource.google/bazel/bazel/+/c7792e2376c735f3cb3594bfcd69f6d84f8205b7:src/main/java/com/google/devtools/build/lib/cmdline/RepositoryName.java;l=40
@@ -242,15 +242,16 @@ func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
 	// We thus choose the following escaping scheme, optimizing for the common
 	// characters '/' and '-' at the cost of making the escape sequences for
 	// relatively uncommon characters ('_' and 'A' to 'Z') and extremely
-	// uncommon characters ('~', leading digit) longer:
+	// uncommon characters ('~', leading digit, trailing dash) longer:
 	//
-	// 1. Before applying the other mappings, if the import path starts with any
-	//    character C that requires escaping or is a digit, replace it with
-	//    "a~C.a".
-	// 2. '_' is mapped to "._."
-	// 3. '~' is mapped to "._-"
-	// 4. 'A' to 'Z' is mapped to "._a" to "._z"
-	// 5. '/' is mapped to '_'
+	// 1. If the module path starts with any character C that requires escaping
+	//    or is a digit, replace it with "a~C.a".
+	// 2. If the module path ends with a character that is neither a letter nor
+	//    a digit, append "/con".
+	// 3. '_' is mapped to "._."
+	// 4. '~' is mapped to "._-"
+	// 5. 'A' to 'Z' is mapped to "._a" to "._z"
+	// 6. '/' is mapped to '_'
 	//
 	// This mapping is reversible because of the following two restrictions on a
 	// valid Go module path:
@@ -267,6 +268,12 @@ func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
 	//
 	// This means that a valid Go module path will never start with the prefix
 	// "a~N.a", where N is any digit.
+	//
+	// "The element prefix up to the first dot must not be a reserved file name
+	//  on Windows, regardless of case (CON, com1, NuL, and so on)."
+	//
+	// This means that a valid Go module path will never end in "/con", making
+	// this a valid padding string to append to the end.
 
 	// Module paths are always non-empty.
 	first := rune(modulePath[0])
@@ -281,6 +288,12 @@ func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
 	if unicode.IsDigit(first) || unicode.IsUpper(first) || first == '_' || first == '.' {
 		modulePath = fmt.Sprintf("a~%c.a%s", first, modulePath[1:])
 	}
+
+	last := rune(modulePath[len(modulePath)-1])
+	if !unicode.IsDigit(last) && !unicode.IsLetter(last) {
+		modulePath += "/con"
+	}
+
 	var repoName strings.Builder
 	for _, r := range modulePath {
 		switch {
@@ -305,17 +318,17 @@ var escapedLeadingCharacterPattern = regexp.MustCompile(`^a~(.)\.a`)
 // ModulePathToBazelRepoNameOneToOne back to a Go module path.
 func BazelRepoNameToModulePathOneToOne(repoName string) (string, error) {
 	// See the implementation comment in BazelRepoNameToModulePathOneToOne.
-	var modulePath strings.Builder
+	var mp strings.Builder
 	pos := 0
 	for pos < len(repoName) {
 		c := repoName[pos]
 		if c == '_' {
-			modulePath.WriteRune('/')
+			mp.WriteRune('/')
 			pos++
 			continue
 		}
 		if c != '.' || pos+1 == len(repoName) || repoName[pos+1] != '_' {
-			modulePath.WriteRune(rune(c))
+			mp.WriteRune(rune(c))
 			pos++
 			continue
 		}
@@ -325,15 +338,15 @@ func BazelRepoNameToModulePathOneToOne(repoName string) (string, error) {
 		c = repoName[pos+2]
 		switch {
 		case c == '.':
-			modulePath.WriteRune('_')
+			mp.WriteRune('_')
 		case c == '-':
-			modulePath.WriteRune('~')
+			mp.WriteRune('~')
 		case c >= 'a' && c <= 'z':
-			modulePath.WriteString(strings.ToUpper(string(c)))
+			mp.WriteString(strings.ToUpper(string(c)))
 		default:
 			return "", fmt.Errorf("invalid escape sequence '._%c' at end of string", c)
 		}
 		pos += 3
 	}
-	return escapedLeadingCharacterPattern.ReplaceAllString(modulePath.String(), "$1"), nil
+	return strings.TrimSuffix(escapedLeadingCharacterPattern.ReplaceAllString(mp.String(), "$1"), "/con"), nil
 }

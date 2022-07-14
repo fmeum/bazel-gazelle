@@ -111,15 +111,16 @@ func TestImportPathToBazelRepoName(t *testing.T) {
 	}
 }
 
-var bazelRepoNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]*$`)
+var bazelRepoNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]*[a-z0-9]$`)
 
 func TestModulePathToBazelRepoNameAndBack(t *testing.T) {
 	for _, modulePath := range []string{
 		"gopkg.in/yaml.v3",
 		"golang.org/x/mod",
 		"git.sr.ht/~urandom/errors",
-		"1example.org/foo/foo_bar",
-		".example.org/foo/foo_bar",
+		"1example.org/foo/foo_bar-",
+		".example.org/foo/foo_bar_",
+		".example.org/foo/foo_bar~",
 		"example.org/~/~_/_/_~/__/_._/_.__._.__/foobar",
 		"example.org/~/~_A/A_/_B~/_C_/_.C_/_._C_._C._C_/foobar",
 	} {
@@ -151,6 +152,7 @@ func FuzzModulePathToBazelRepoNameAndBack(f *testing.F) {
 	f.Add(".example.org/foo/foo_bar")
 	f.Add("example.org/~/~_/_/_~/__/_._/_._._._/foobar")
 	f.Add("example.org/~/~_A/A_/_B~/_C_/_.C_/_._C_._C._C_/foobar")
+	f.Add("/con")
 	f.Fuzz(func(t *testing.T, modulePath string) {
 		err := module.CheckPath(modulePath)
 		if err != nil {
