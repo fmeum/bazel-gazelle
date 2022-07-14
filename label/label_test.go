@@ -119,16 +119,10 @@ func TestModulePathToBazelRepoNameAndBack(t *testing.T) {
 		"golang.org/x/mod",
 		"git.sr.ht/~urandom/errors",
 		"1example.org/foo/foo_bar",
-		"Aexample.org/foo/foo_bar",
-		"_example.org/foo/foo_bar",
-		"~example.org/foo/foo_bar",
+		".example.org/foo/foo_bar",
 		"example.org/~/~_/_/_~/__/_._/_.__._.__/foobar",
 		"example.org/~/~_A/A_/_B~/_C_/_.C_/_._C_._C._C_/foobar",
 	} {
-		err := module.CheckImportPath(modulePath)
-		if err != nil {
-			t.Errorf("Invalid import path %q: %v", modulePath, err)
-		}
 		repoName := ModulePathToBazelRepoNameOneToOne(modulePath)
 		if !bazelRepoNamePattern.MatchString(repoName) {
 			t.Errorf("ModulePathToBazelRepoNameOneToOne(%q) = %q is not a valid repo name", modulePath, repoName)
@@ -151,10 +145,14 @@ func FuzzModulePathToBazelRepoNameAndBack(f *testing.F) {
 	f.Add("golang.org/x/mod")
 	f.Add("git.sr.ht/~urandom/errors")
 	f.Add("1example.org/foo/foo_bar")
+	f.Add("Aexample.org/foo/foo_bar")
+	f.Add("_example.org/foo/foo_bar")
+	f.Add("~example.org/foo/foo_bar")
+	f.Add(".example.org/foo/foo_bar")
 	f.Add("example.org/~/~_/_/_~/__/_._/_._._._/foobar")
 	f.Add("example.org/~/~_A/A_/_B~/_C_/_.C_/_._C_._C._C_/foobar")
 	f.Fuzz(func(t *testing.T, modulePath string) {
-		err := module.CheckImportPath(modulePath)
+		err := module.CheckPath(modulePath)
 		if err != nil {
 			return
 		}

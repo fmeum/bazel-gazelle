@@ -242,7 +242,7 @@ func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
 	// We thus choose the following escaping scheme, optimizing for the common
 	// characters '/' and '-' at the cost of making the escape sequences for
 	// relatively uncommon characters ('_' and 'A' to 'Z') and extremely
-	// uncommon characters ('~', leading digit or escaped character) longer:
+	// uncommon characters ('~', leading digit) longer:
 	//
 	// 1. Before applying the other mappings, if the import path starts with any
 	//    character C that requires escaping or is a digit, replace it with
@@ -270,7 +270,15 @@ func ModulePathToBazelRepoNameOneToOne(modulePath string) string {
 
 	// Module paths are always non-empty.
 	first := rune(modulePath[0])
-	if unicode.IsDigit(first) || unicode.IsUpper(first) || first == '_' || first == '~' {
+	// Leading characters are further restricted by:
+	// "The leading path element (up to the first slash, if any), by convention
+	//  a domain name, must contain only lower-case ASCII letters, ASCII digits,
+	//  dots (., U+002E), and dashes (-, U+002D); it must contain at least one
+	//  dot and cannot start with a dash."
+	// In fact, it also can't start with a dot: Domain names aren't allowed to
+	// start with '.' and neither are module paths accepted by module.CheckPath.
+	// To be on the safe side, we check for '.' here as well.
+	if unicode.IsDigit(first) || unicode.IsUpper(first) || first == '_' || first == '.' {
 		modulePath = fmt.Sprintf("a~%c.a%s", first, modulePath[1:])
 	}
 	var repoName strings.Builder
