@@ -16,6 +16,7 @@ limitations under the License.
 package label
 
 import (
+	"golang.org/x/mod/module"
 	"reflect"
 	"testing"
 )
@@ -107,4 +108,35 @@ func TestImportPathToBazelRepoName(t *testing.T) {
 			t.Errorf(`ImportPathToBazelRepoName(%q) = %q; want %q`, path, got, want)
 		}
 	}
+}
+
+func TestModulePathToBazelRepoNameAndBack(t *testing.T) {
+	for _, modulePath := range []string{
+		"gopkg.in/yaml.v3",
+		"golang.org/x/mod",
+		"git.sr.ht/~urandom/errors",
+		"example.org/foo/foo_bar",
+		"example.org/~/~_/_/_~/__/_._/_._._._/foobar",
+	} {
+		err := module.CheckImportPath(modulePath)
+		if err != nil {
+			t.Errorf("Invalid import path %q: %v", modulePath, err)
+		}
+		repoName := ModulePathToBazelRepoNameOneToOne(modulePath)
+		println(repoName)
+		if got, err := BazelRepoNameToModulePathOneToOne(repoName); got != modulePath || err != nil {
+			t.Errorf(
+				"ModulePathToBazelRepoNameOneToOne(%q) = %q\nBazelRepoNameToModulePathOneToOne(ModulePathToBazelRepoNameOneToOne(%q)) = %q; want %q",
+				modulePath,
+				repoName,
+				modulePath,
+				got,
+				modulePath,
+			)
+		}
+	}
+}
+
+func FuzzModulePathToBazelRepoNameAndBack(f *testing.F) {
+	f.Add("gopkg.in/yaml.v3", "golang.org/x/mod", "git.sr.ht/~urandom/errors", "example.org/~/~_/_/_~/__/_._/_._._._/foobar")
 }
