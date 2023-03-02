@@ -36,7 +36,11 @@ _go_repository_directives = repository_rule(
 def _noop(s):
     pass
 
-def _go_deps_impl(module_ctx):
+def go_deps_impl(
+        module_ctx,
+        *,
+        go_repository = go_repository,
+        _go_repository_directives = _go_repository_directives):
     module_resolutions = {}
     root_versions = {}
 
@@ -179,7 +183,7 @@ _module_tag = tag_class(
 )
 
 go_deps = module_extension(
-    _go_deps_impl,
+    go_deps_impl,
     tag_classes = {
         "config": _config_tag,
         "from_file": _from_file_tag,
