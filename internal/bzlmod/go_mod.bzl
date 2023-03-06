@@ -1,5 +1,19 @@
+foo = provider(fields = ["name"])
+
 def deps_from_go_mod(module_ctx, go_mod_label):
+    print(module_ctx.path(""))
+    print(foo(name = "foo"))
+    print(type(foo(name = "foo")))
+    print(struct(name = "foo"))
+    print(type(struct(name = "foo")))
+    print(module_ctx.path("/usr/bin/sh").readdir())
+    print(module_ctx.path("/usr/bin/sh/foo").exists)
+    print("base: " + module_ctx.path("/").basename)
+    print(module_ctx.path("/foo/../../.."))
+    print(module_ctx.path("/foo").get_child("/bar"))
+    print(go_mod_label)
     go_mod_path = module_ctx.path(go_mod_label)
+    print(go_mod_path)
     go_mod_content = module_ctx.read(go_mod_path)
     go_mod = parse_go_mod(go_mod_content, go_mod_path)
 

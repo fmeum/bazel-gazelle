@@ -6,7 +6,16 @@ def module(name, version, tags, *, is_root = False):
         is_root = is_root,
     )
 
-def module_extension_test(env, impl, *, modules, rules_to_mock = [], tag_classes = []):
+def _configure(impl, *, rules_to_mock = [], tag_classes = []):
+    run = lambda *args, **kwargs: _run(cfg = cfg, *args, **kwargs)
+    cfg = struct(
+        run = run,
+        _impl = impl,
+        _rules_to_mock = rules_to_mock,
+        _tag_classes = tag_classes,
+    )
+
+def _run(env, cfg, *, modules, rules_to_mock = [], tag_classes = []):
     if not modules:
         fail("modules must not be empty")
 
@@ -46,3 +55,8 @@ def module_extension_test(env, impl, *, modules, rules_to_mock = [], tag_classes
     return struct(
         repos = struct(**repos),
     )
+
+module_extension_test = struct(
+    configure = _configure,
+    run = _run,
+)
