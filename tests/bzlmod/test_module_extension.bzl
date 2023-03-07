@@ -40,10 +40,16 @@ assert_failure_test = rule(
     analysis_test = True,
 )
 
-def _make_config(extension_impl, *, repository_rules = [], tag_classes = {}):
-    repository_rules = tuple(repository_rules)
-    tag_classes = dict(tag_classes)
+def _tag_with_defaults(tag_class_defaults, tag):
+    return struct(**(tag_class_defaults[tag.tag_class] | tag.attrs))
 
+def _make_module_ctx_tags(tag_class_defaults, tags):
+    return struct(**{
+        name: [_tag_with_defaults(tag_class_defaults, tag) for tag in tags if tag.tag_class == name]
+        for name in tag_class_defaults.keys()
+    })
+
+def _make_config(extension_impl, *, repository_rules = [], tag_class_defaults = {}):
     def _run(modules):
         if not modules:
             fail("modules must not be empty")
@@ -53,10 +59,7 @@ def _make_config(extension_impl, *, repository_rules = [], tag_classes = {}):
                 module(
                     name = m.name,
                     version = m.version,
-                    tags = struct(**{
-                        name: [struct(**tag.attrs) for tag in m.tags if tag.tag_class == name]
-                        for name in tag_classes.keys()
-                    }),
+                    tags = _make_module_ctx_tags(tag_class_defaults, m.tags),
                     is_root = m.is_root,
                 )
                 for m in modules
