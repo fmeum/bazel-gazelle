@@ -1,4 +1,6 @@
-def module(name, version, tags, *, is_root = False):
+load("@bazel_skylib//lib:unittest.bzl", "TOOLCHAIN_TYPE", "unittest")
+
+def module(name, version = "1.2.3.4-bcr.1+alpha", tags = [], *, is_root = False):
     return struct(
         name = name,
         version = version,
@@ -6,8 +8,20 @@ def module(name, version, tags, *, is_root = False):
         is_root = is_root,
     )
 
-def _make_config(impl, *, repository_rules = [], tag_classes = []):
-    def _make_test(test_impl, modules):
+def tag(tag_class, attrs = {}):
+    return struct(
+        tag_class = tag_class,
+        attrs = attrs,
+    )
+
+def _func_name(func):
+    return str(func).removeprefix("<function ").removesuffix(">").removeprefix("_")
+
+def _make_config(extension_impl, *, repository_rules = [], tag_classes = {}):
+    repository_rules = tuple(repository_rules)
+    tag_classes = dict(tag_classes)
+
+    def _run(modules):
         if not modules:
             fail("modules must not be empty")
 
@@ -17,7 +31,7 @@ def _make_config(impl, *, repository_rules = [], tag_classes = []):
                     name = m.name,
                     version = m.version,
                     tags = struct(**{
-                        tag_class: m.tags.get(tag_class, [])
+                        tag_class: [tag for tag in m.tags if tag.tag_class == tag_class]
                         for tag_class in tag_classes.keys()
                     }),
                     is_root = m.is_root,
@@ -46,10 +60,27 @@ def _make_config(impl, *, repository_rules = [], tag_classes = []):
 
             mock_repo_rules[kind] = mock_repo_rule
 
-        impl(module_ctx, **mock_repo_rules)
+        extension_impl(module_ctx, **mock_repo_rules)
 
         return struct(
             repos = struct(**repos),
+        )
+
+    def _make_test(asserts_func, modules):
+        def _test_impl(ctx):
+            env = unittest.begin(ctx)
+
+            result = _run(modules)
+            asserts_func(env, result)
+
+            return unittest.end(env)
+
+        return rule(
+            _test_impl,
+            attrs = {"_impl_name": attr.string(default = _func_name(asserts_func))},
+            _skylark_testable = True,
+            test = True,
+            toolchains = [TOOLCHAIN_TYPE],
         )
 
     return struct(
