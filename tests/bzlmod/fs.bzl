@@ -1,3 +1,10 @@
+FileInfo = provider(
+    fields = {
+        "executable": "A function describing the runtime behavior of this executable file.",
+        "text": "The text content of the file as a string, or None if the file is not a text file.",
+    },
+)
+
 _DIR_TYPE = type({})
 
 def _normalize(path):
@@ -52,14 +59,17 @@ def _new(is_root, working_directory):
         entry[basename] = value
 
     def make_path(path_str):
+        if not is_absolute(path_str):
+            path_str = working_directory + "/" + path_str
         path_str = _normalize(path_str)
 
         segments = path_str.split("/")
-        path_str_prefix = segments[0]
+        path_str_prefix = ""
         path = None
-        for segment in segments[1:]:
+        for segment in segments:
+            path_str_prefix += segment
             path = _make_path(path_str_prefix, path)
-            path_str_prefix += "/" + segment
+            path_str_prefix += "/"
 
         return path
 

@@ -17,12 +17,14 @@ def _go_deps_test_impl(ctx):
     #    print(result)
     f = fs.new(lambda x: x == "", "/home/user")
     f.set("/home/user/test", "foo")
-    print(f.get("/home/user"))
-    print(f.get("/home/user/test"))
+
+    #    print(f.get("/home/user"))
+    #    print(f.get("/home/user/test"))
     p = f.make_path("/home/user")
     print([pcc.__str__() for pcc in p.readdir()])
     print(p.exists)
     pc = p.get_child("test")
+    print(pc.__str__())
     print(pc.exists)
     return unittest.end(env)
 
