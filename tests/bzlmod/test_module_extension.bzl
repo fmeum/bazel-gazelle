@@ -1,6 +1,6 @@
-load("@bazel_skylib//lib:unittest.bzl", "TOOLCHAIN_TYPE", "unittest")
+load("@bazel_skylib//lib:unittest.bzl", "TOOLCHAIN_TYPE", "analysistest", "asserts", "unittest")
 
-def module(name, version = "1.2.3.4-bcr.1+alpha", tags = [], *, is_root = False):
+def module(name, version, tags, *, is_root = False):
     return struct(
         name = name,
         version = version,
@@ -8,14 +8,37 @@ def module(name, version = "1.2.3.4-bcr.1+alpha", tags = [], *, is_root = False)
         is_root = is_root,
     )
 
-def tag(tag_class, attrs = {}):
+def tag(_tag_class, **attrs):
     return struct(
-        tag_class = tag_class,
+        tag_class = _tag_class,
         attrs = attrs,
     )
 
 def _func_name(func):
     return str(func).removeprefix("<function ").removesuffix(">").removeprefix("_")
+
+def _assert_failure_test_impl(ctx):
+    env = analysistest.begin(ctx)
+    asserts.expect_failure(env, ctx.attr.expected_failure_msg)
+    return analysistest.end(env)
+
+assert_failure_test = rule(
+    _assert_failure_test_impl,
+    attrs = {
+        "target_under_test": attr.label(
+            mandatory = True,
+            cfg = analysis_test_transition(settings = {
+                "//command_line_option:allow_analysis_failures": True,
+            }),
+        ),
+        "expected_failure_msg": attr.string(),
+        # TODO: Don't fix this
+        "_impl_name": attr.string(default = "Fixed"),
+    },
+    test = True,
+    toolchains = [TOOLCHAIN_TYPE],
+    analysis_test = True,
+)
 
 def _make_config(extension_impl, *, repository_rules = [], tag_classes = {}):
     repository_rules = tuple(repository_rules)
@@ -31,8 +54,8 @@ def _make_config(extension_impl, *, repository_rules = [], tag_classes = {}):
                     name = m.name,
                     version = m.version,
                     tags = struct(**{
-                        tag_class: [tag for tag in m.tags if tag.tag_class == tag_class]
-                        for tag_class in tag_classes.keys()
+                        name: [struct(**tag.attrs) for tag in m.tags if tag.tag_class == name]
+                        for name in tag_classes.keys()
                     }),
                     is_root = m.is_root,
                 )
@@ -83,8 +106,30 @@ def _make_config(extension_impl, *, repository_rules = [], tag_classes = {}):
             toolchains = [TOOLCHAIN_TYPE],
         )
 
+    def _make_failure_test(modules, expected_failure_msg = ""):
+        failing_rule = rule(lambda _ctx: _run(modules))
+
+        def instantiate_test(name, **kwargs):
+            failing_rule_name = name + "_failing"
+
+            failing_rule(
+                name = failing_rule_name,
+                tags = ["manual"],
+                visibility = ["//visibility:private"],
+            )
+
+            assert_failure_test(
+                name = name,
+                target_under_test = failing_rule_name,
+                expected_failure_msg = expected_failure_msg,
+                **kwargs
+            )
+
+        return instantiate_test, failing_rule
+
     return struct(
         make_test = _make_test,
+        make_failure_test = _make_failure_test,
     )
 
 module_extension_test = struct(
