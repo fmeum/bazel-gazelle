@@ -182,11 +182,13 @@ _module_tag = tag_class(
     },
 )
 
+GO_DEPS_TAG_CLASSES = {
+    "config": _config_tag,
+    "from_file": _from_file_tag,
+    "module": _module_tag,
+}
+
 go_deps = module_extension(
     go_deps_impl,
-    tag_classes = {
-        "config": _config_tag,
-        "from_file": _from_file_tag,
-        "module": _module_tag,
-    },
+    tag_classes = GO_DEPS_TAG_CLASSES,
 )

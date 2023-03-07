@@ -35,7 +35,7 @@ def _new(is_root, working_directory):
 
     def get(path):
         entry = mem
-        segments = path.split("/")
+        segments = path.__str__().split("/")
         for i, segment in enumerate(segments):
             if type(entry) != _DIR_TYPE:
                 fail("Not a directory: " + "/".join(segments[:i + 1]))
