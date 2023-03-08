@@ -1,4 +1,4 @@
-load(":go_deps_test.bzl", "go_deps_test_suite", "go_deps_with_duplicate_module_tag_fails")
+load(":go_deps_test.bzl", "go_deps_test_suite")
 load(":go_mod_test.bzl", "go_mod_test_suite")
 load(":semver_test.bzl", "semver_test_suite")
 
@@ -7,7 +7,3 @@ go_deps_test_suite(name = "go_deps_test")
 go_mod_test_suite(name = "go_mod_test")
 
 semver_test_suite(name = "semver_test")
-
-go_deps_with_duplicate_module_tag_fails(
-    name = "go_deps_with_duplicate_module_tag_fails",
-)
