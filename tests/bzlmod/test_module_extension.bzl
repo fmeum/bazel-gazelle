@@ -1,4 +1,4 @@
-load("@bazel_skylib//lib:unittest.bzl", "TOOLCHAIN_TYPE", "analysistest", "asserts", "unittest")
+load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
 
 def module(name, version, tags, *, is_root = False):
     return struct(
@@ -23,23 +23,6 @@ def _assert_failure_test_impl(ctx):
     env = analysistest.begin(ctx)
     asserts.expect_failure(env, ctx.attr.expected_failure_msg)
     return analysistest.end(env)
-
-_assert_failure_test = rule(
-    _assert_failure_test_impl,
-    attrs = {
-        "target_under_test": attr.label(
-            mandatory = True,
-            cfg = analysis_test_transition(settings = {
-                "//command_line_option:allow_analysis_failures": True,
-            }),
-        ),
-        "expected_failure_msg": attr.string(),
-        # TODO: Don't fix this
-        "_impl_name": attr.string(default = "Fixed"),
-    },
-    test = True,
-    analysis_test = True,
-)
 
 def _tag_with_defaults(tag_class_defaults, tag):
     return struct(**(tag_class_defaults[tag["tag_class"]] | tag["attrs"]))
@@ -142,10 +125,27 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
                 testonly = True,
             )
 
-            _assert_failure_test(
-                name = prefixed_name,
-                target_under_test = failing_rule_name,
-                expected_failure_msg = failure_contains,
+            testing.analysis_test(
+                prefixed_name,
+                _assert_failure_test_impl,
+                attrs = {
+                    "target_under_test": attr.label(
+                        cfg = analysis_test_transition(
+                            settings = {
+                                "//command_line_option:allow_analysis_failures": True,
+                            },
+                        ),
+                    ),
+                    "expected_failure_msg": attr.string(
+                        default = failure_contains,
+                    ),
+                    "_impl_name": attr.string(
+                        default = prefixed_name,
+                    ),
+                },
+                attr_values = {
+                    "target_under_test": ":" + failing_rule_name,
+                },
             )
 
         rules_to_instantiate.append(instantiate_test)
