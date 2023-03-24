@@ -36,4 +36,4 @@ suite_builder.add_failure_test(
     failure_contains = "Duplicate Go module path 'example.com/foo' in module 'foo'",
 )
 
-go_deps_test_suite, _1_test, _2_test = suite_builder.build()
+go_deps_test_suite, _1_test = suite_builder.build()

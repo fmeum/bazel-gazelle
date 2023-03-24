@@ -103,25 +103,20 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
             fail("add_test() cannot be called after build()")
 
         def _test_impl(ctx):
-            env = unittest.begin(ctx)
+            env = analysistest.begin(ctx)
 
             result = _run(modules)
             asserts_func(env, result)
 
-            return unittest.end(env)
+            return analysistest.end(env)
 
         test_name = _func_name(asserts_func)
 
-        test_rule = rule(
+        rules_to_instantiate.append(lambda name: testing.analysis_test(
+            name + "_" + test_name,
             _test_impl,
             attrs = {"_impl_name": attr.string(default = test_name)},
-            _skylark_testable = True,
-            test = True,
-            toolchains = [TOOLCHAIN_TYPE],
-        )
-
-        rules_to_instantiate.append(lambda name, **kwargs: test_rule(name = name + "_" + test_name))
-        rules_to_export.append(test_rule)
+        ))
 
     def _add_failure_test(test_name, *, modules, failure_contains):
         if already_built:
