@@ -3,7 +3,7 @@ load("//internal/bzlmod:go_deps.bzl", "go_deps_impl")
 load(":test_module_extension.bzl", "module", "module_extension_test", "tag")
 load(":fs.bzl", "fs")
 
-suite_builder = module_extension_test.suite_builder(
+suite_builder, _export = module_extension_test.suite_builder(
     go_deps_impl,
     repository_rules = ["go_repository", "_go_repository_directives"],
     tag_class_defaults = {
@@ -36,4 +36,4 @@ suite_builder.add_failure_test(
     failure_contains = "Duplicate Go module path 'example.com/foo' in module 'foo'",
 )
 
-go_deps_test_suite, _1_test = suite_builder.build()
+go_deps_test_suite = suite_builder.build()

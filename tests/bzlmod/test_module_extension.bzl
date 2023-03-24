@@ -38,16 +38,15 @@ _assert_failure_test = rule(
         "_impl_name": attr.string(default = "Fixed"),
     },
     test = True,
-    toolchains = [TOOLCHAIN_TYPE],
     analysis_test = True,
 )
 
 def _tag_with_defaults(tag_class_defaults, tag):
-    return struct(**(tag_class_defaults[tag.tag_class] | tag.attrs))
+    return struct(**(tag_class_defaults[tag["tag_class"]] | tag["attrs"]))
 
 def _make_module_ctx_tags(tag_class_defaults, tags):
     return struct(**{
-        name: [_tag_with_defaults(tag_class_defaults, tag) for tag in tags if tag.tag_class == name]
+        name: [_tag_with_defaults(tag_class_defaults, tag) for tag in tags if tag["tag_class"] == name]
         for name in tag_class_defaults.keys()
     })
 
@@ -63,10 +62,10 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
         module_ctx = struct(
             modules = [
                 module(
-                    name = m.name,
-                    version = m.version,
-                    tags = _make_module_ctx_tags(tag_class_defaults, m.tags),
-                    is_root = m.is_root,
+                    name = m["name"],
+                    version = m["version"],
+                    tags = _make_module_ctx_tags(tag_class_defaults, m["tags"]),
+                    is_root = m["is_root"],
                 )
                 for m in modules
             ],
@@ -98,6 +97,16 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
             repos = struct(**repos),
         )
 
+    def _run_one_impl(ctx):
+        _run(json.decode(ctx.attr.modules))
+
+    _run_one = rule(
+        _run_one_impl,
+        attrs = {
+            "modules": attr.string(),
+        },
+    )
+
     def _add_test(asserts_func, *, modules):
         if already_built:
             fail("add_test() cannot be called after build()")
@@ -105,7 +114,7 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
         def _test_impl(ctx):
             env = analysistest.begin(ctx)
 
-            result = _run(modules)
+            result = _run(json.decode(json.encode(modules)))
             asserts_func(env, result)
 
             return analysistest.end(env)
@@ -122,27 +131,24 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
         if already_built:
             fail("add_test() cannot be called after build()")
 
-        failing_rule = rule(lambda _ctx: _run(modules), test = True)
-
-        def instantiate_test(name, **kwargs):
+        def instantiate_test(name):
             prefixed_name = name + "_" + test_name
             failing_rule_name = prefixed_name + "_failing"
 
-            failing_rule(
+            _run_one(
                 name = failing_rule_name,
+                modules = json.encode(modules),
                 tags = ["manual"],
-                visibility = ["//visibility:private"],
+                testonly = True,
             )
 
             _assert_failure_test(
                 name = prefixed_name,
                 target_under_test = failing_rule_name,
                 expected_failure_msg = failure_contains,
-                **kwargs
             )
 
         rules_to_instantiate.append(instantiate_test)
-        rules_to_export.append(failing_rule)
 
     def _build():
         if already_built:
@@ -157,13 +163,13 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
                 for r in rules_to_instantiate
             ]
 
-        return tuple([instantiate_suite] + rules_to_export)
+        return instantiate_suite
 
     return struct(
         add_test = _add_test,
         add_failure_test = _add_failure_test,
         build = _build,
-    )
+    ), _run_one
 
 module_extension_test = struct(
     suite_builder = _suite_builder,
