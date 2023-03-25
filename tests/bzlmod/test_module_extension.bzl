@@ -1,4 +1,5 @@
 load("@bazel_skylib//lib:unittest.bzl", "analysistest", "asserts")
+load(":os.bzl", "LINUX_AMD64_PRESET")
 
 def module(name, version, tags, *, is_root = False):
     return struct(
@@ -38,7 +39,7 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
     rules_to_export = []
     already_built = False
 
-    def _run(modules):
+    def _run(modules, *, preset = LINUX_AMD64_PRESET):
         if not modules:
             fail("modules must not be empty")
 
@@ -52,6 +53,11 @@ def _suite_builder(extension_impl, *, repository_rules = [], tag_class_defaults 
                 )
                 for m in modules
             ],
+            os = struct(
+                arch = preset.arch,
+                environ = preset.environ,
+                name = preset.name,
+            ),
         )
 
         mock_repo_rules = {}

@@ -7,6 +7,12 @@ FileInfo = provider(
 
 _DIR_TYPE = type({})
 
+_TRUTHY_EXISTS_ELEMENT = """\
+path#exists is a bool-valued struct field, which cannot be implemented in pure Starlark. Instead, \
+it is modeled as a list that either contains this string (truthy) or is empty (falsy). When you \
+see this string, it likely means that you explicitly compared path#exists to True or False, which \
+does not work as expected due to this hack."""
+
 def _normalize(path):
     segments = path.split("/")
     root = segments[0]
@@ -58,11 +64,18 @@ def _new(is_root, working_directory):
             fail("Not a file: " + path)
         entry[basename] = value
 
+        # Update the 'exists' field of all paths.
+        for path in all_paths.values():
+            # TODO: This is a wild but necessary hack: Read _TRUTHY_EXISTS_ELEMENT.
+            path.exists[:] = [_TRUTHY_EXISTS_ELEMENT] if get(path.__str__()) != None else []
+
     def make_path(path_str):
         if not is_absolute(path_str):
             path_str = working_directory + "/" + path_str
         path_str = _normalize(path_str)
 
+        # Since path#dirname is a string-valued struct field, not a function, and structs are
+        # immutable, we have to eagerly create a new path for each parent directory.
         segments = path_str.split("/")
         path_str_prefix = ""
         path = None
@@ -99,7 +112,7 @@ def _new(is_root, working_directory):
         self = struct(
             basename = path_str.rpartition("/")[2],
             dirname = dirname,
-            exists = [True] if get(path_str) != None else [],
+            exists = [_TRUTHY_EXISTS_ELEMENT] if get(path_str) != None else [],
             get_child = _get_child,
             readdir = _readdir,
             realpath = _realpath,
