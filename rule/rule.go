@@ -745,11 +745,29 @@ func ruleFromExpr(index int, expr bzl.Expr) *Rule {
 	if !ok {
 		return nil
 	}
-	x, ok := call.X.(*bzl.Ident)
+
+	var x *bzl.Ident
+	var suffix string = ""
+	var kind string
+
+	d, ok := call.X.(*bzl.DotExpr)
+	if ok {
+		x, ok = d.X.(*bzl.Ident)
+		suffix = d.Name
+	} else {
+		x, ok = call.X.(*bzl.Ident)
+	}
+
 	if !ok {
 		return nil
 	}
-	kind := x.Name
+
+	if len(suffix) > 0 {
+		kind = x.Name + "." + suffix
+	} else {
+		kind = x.Name
+	}
+
 	var args []bzl.Expr
 	attrs := make(map[string]*bzl.AssignExpr)
 	for _, arg := range call.List {
@@ -966,7 +984,19 @@ func (r *Rule) sync() {
 	}
 
 	call := r.expr.(*bzl.CallExpr)
-	call.X.(*bzl.Ident).Name = r.kind
+
+	var properName string = r.kind
+	if idx := strings.Index(properName, "."); idx != -1 {
+		properName = properName[:idx]
+	}
+
+	d, ok := call.X.(*bzl.DotExpr)
+	if ok {
+		d.X.(*bzl.Ident).Name = properName
+	} else {
+		call.X.(*bzl.Ident).Name = properName
+	}
+
 	if len(r.attrs) > 1 {
 		call.ForceMultiLine = true
 	}
