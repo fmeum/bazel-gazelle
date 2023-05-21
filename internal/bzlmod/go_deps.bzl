@@ -71,6 +71,10 @@ def _fail_on_non_root_overrides(module, tag_class, attribute = None):
         else:
             fail(_report_forbidden_override(module, tag_class))
 
+def _fail_on_duplicate_tag(module, tag_class):
+    if len(getattr(module.tags, tag_class)) > 1:
+        fail("Module {} has multiple go_deps.{} tags.".format(module.name, tag_class))
+
 def _check_directive(directive):
     if directive.startswith("gazelle:") and " " in directive and not directive[len("gazelle:"):][0].isspace():
         return
@@ -185,7 +189,46 @@ _go_repository_config = repository_rule(
 def _noop(_):
     pass
 
+def _consume_tags(f, state, modules, tag_class, **kwargs):
+    for m in modules:
+        for t in getattr(m.tags, tag_class):
+            f(state, m, t, **kwargs)
+    return state
+
+def _consume_gazelle_override(overrides, module, tag):
+    if tag.path in overrides:
+        fail("Module {} has multiple go_dep.gazelle_override tags for path '{}'.".format(module.name, tag.path))
+    for directive in tag.directives:
+        _check_directive(directive)
+
+    overrides[tag.path] = tag
+
+def _consume_module_override(overrides, module, tag):
+    if tag.path in overrides:
+        fail("Module {} has multiple go_dep.module_override tags for path '{}'.".format(module.name, tag.path))
+
+    overrides[tag.path] = tag
+
+def _consume_from_file(state, module, tag, *, module_ctx):
+    module_tags, replace_map = deps_from_go_mod(module_ctx, tag.go_mod)
+
+    is_dev_dependency = _is_dev_dependency(module_ctx, tag)
+    state[0] += [
+        with_replaced_or_new_fields(tag, _is_dev_dependency = is_dev_dependency)
+        for tag in module_tags
+    ]
+
+    # go.sum may be missing if the module has no dependencies.
+    if module_tags:
+        for entry, new_sum in sums_from_go_mod(module_ctx, tag.go_mod).items():
+            _safe_insert_sum(state[1], entry, new_sum)
+
+    if module.is_root:
+        state[2].update(replace_map)
+
 def _go_deps_impl(module_ctx):
+    modules = module_ctx.modules
+
     module_resolutions = {}
     sums = {}
     replace_map = {}
@@ -198,44 +241,29 @@ def _go_deps_impl(module_ctx):
     root_module_direct_deps = {}
     root_module_direct_dev_deps = {}
 
-    if module_ctx.modules[0].name == "gazelle":
+    if modules[0].name == "gazelle":
         root_module_direct_deps["bazel_gazelle_go_repository_config"] = None
 
-    outdated_direct_dep_printer = print
-    for module in module_ctx.modules:
-        # Parse the go_deps.config tag of the root module only.
-        for mod_config in module.tags.config:
-            if not module.is_root:
-                continue
-            check_direct_deps = mod_config.check_direct_dependencies
-            if check_direct_deps == "off":
-                outdated_direct_dep_printer = _noop
-            elif check_direct_deps == "warning":
-                outdated_direct_dep_printer = print
-            elif check_direct_deps == "error":
-                outdated_direct_dep_printer = fail
-
+    for module in modules:
+        _fail_on_duplicate_tag(module, "config")
+        _fail_on_duplicate_tag(module, "from_file")
         _fail_on_non_root_overrides(module, "gazelle_override")
-        for gazelle_override_tag in module.tags.gazelle_override:
-            if gazelle_override_tag.path in gazelle_overrides:
-                fail("Multiple overrides defined for Go module path \"{}\" in module \"{}\".".format(gazelle_override_tag.path, module.name))
-            for directive in gazelle_override_tag.directives:
-                _check_directive(directive)
-
-            gazelle_overrides[gazelle_override_tag.path] = struct(
-                directives = gazelle_override_tag.directives,
-                build_file_generation = gazelle_override_tag.build_file_generation,
-            )
-
         _fail_on_non_root_overrides(module, "module_override")
-        for module_override_tag in module.tags.module_override:
-            if module_override_tag.path in module_overrides:
-                fail("Multiple overrides defined for Go module path \"{}\" in module \"{}\".".format(module_override_tag.path, module.name))
-            module_overrides[module_override_tag.path] = struct(
-                patches = module_override_tag.patches,
-                patch_strip = module_override_tag.patch_strip,
-            )
+        _fail_on_non_root_overrides(module, "module", "build_naming_convention")
+        _fail_on_non_root_overrides(module, "module", "build_file_proto_mode")
 
+    outdated_direct_dep_printer = print
+    if modules[0].is_root and modules[0].tags.config:
+        check_direct_deps = modules[0].tags.config.check_direct_dependencies
+        if check_direct_deps == "off":
+            outdated_direct_dep_printer = _noop
+        elif check_direct_deps == "error":
+            outdated_direct_dep_printer = fail
+
+    gazelle_overrides = _consume_tags(_consume_gazelle_override, {}, modules, "gazelle_override")
+    module_overrides = _consume_tags(_consume_module_override, {}, modules, "module_override")
+
+    for module in module_ctx.modules:
         if len(module.tags.from_file) > 1:
             fail(
                 "Multiple \"go_deps.from_file\" tags defined in module \"{}\": {}".format(
@@ -264,9 +292,6 @@ def _go_deps_impl(module_ctx):
         for module_tag in module.tags.module:
             sum_version = _canonicalize_raw_version(module_tag.version)
             _safe_insert_sum(sums, (module_tag.path, sum_version), module_tag.sum)
-
-        _fail_on_non_root_overrides(module, "module", "build_naming_convention")
-        _fail_on_non_root_overrides(module, "module", "build_file_proto_mode")
 
         # Parse the go_dep.module tags of all transitive dependencies and apply
         # Minimum Version Selection to resolve importpaths to Go module versions
@@ -438,6 +463,7 @@ _config_tag = tag_class(
     attrs = {
         "check_direct_dependencies": attr.string(
             values = ["off", "warning", "error"],
+            default = "warning",
         ),
     },
 )

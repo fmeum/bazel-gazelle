@@ -24,7 +24,7 @@ def format_rule_call(_kind, **attrs):
 
     Args:
         _kind: The kind of the rule.
-        attrs: The attributes of the rule. The attributes are sorted by name,
+        **attrs: The attributes of the rule. The attributes are sorted by name,
             except for the "name" attribute, which is always first. None
             values are ignored.
 
